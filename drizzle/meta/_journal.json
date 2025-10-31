@@ -1,0 +1,27 @@
+{
+  "version": "5",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1761384396535,
+      "tag": "0000_silent_mister_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1761791993840,
+      "tag": "0001_jittery_talos",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1761892000000,
+      "tag": "0002_simplify_schema",
+      "breakpoints": true
+    }
+  ]
+}
