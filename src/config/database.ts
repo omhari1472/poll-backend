@@ -39,10 +39,12 @@ export function createDbConnection() {
     ? { rejectUnauthorized: false }
     : undefined;
 
+  // Check for placeholder URLs (common in Docker/container setups)
   const isValidDatabaseUrl = databaseUrl && 
     databaseUrl !== 'mysql://user:password@host:port/database' &&
     databaseUrl.startsWith('mysql://') &&
-    !databaseUrl.includes('user:password@host:port');
+    !databaseUrl.includes('user:password@host:port') &&
+    databaseUrl.length > 20; // Ensure it's not just a placeholder
 
   const commonConfig = {
     waitForConnections: true,
@@ -63,24 +65,40 @@ export function createDbConnection() {
 
   if (isValidDatabaseUrl && databaseUrl) {
     try {
-      const url = new URL(databaseUrl);
-      const rawDbName = url.pathname.replace(/^\//, '').split('?')[0];
-      const dbName: string = (rawDbName?.trim() ?? 'poll') || 'poll';
+      // Handle URLs with query parameters by removing them before parsing
+      // but preserve the database name
+      const urlWithoutQuery = databaseUrl.split('?')[0] || databaseUrl;
+      const url = new URL(urlWithoutQuery);
+      
+      // Extract database name from pathname, remove leading slash
+      const rawDbName = url.pathname.replace(/^\//, '').trim();
+      const dbName: string = rawDbName || 'poll';
+      
+      // Decode username and password to handle special characters
+      const username = url.username ? decodeURIComponent(url.username) : '';
+      const password = url.password ? decodeURIComponent(url.password) : '';
       
       config = {
-        host: url.hostname,
+        host: url.hostname || '',
         port: url.port ? parseInt(url.port, 10) : 3306,
-        user: decodeURIComponent(url.username),
-        password: decodeURIComponent(url.password),
+        user: username,
+        password: password,
         database: dbName,
       };
+      
+      // Validate parsed config
+      if (!config.host || !config.user || !config.database) {
+        throw new Error(`Invalid DATABASE_URL: missing host, user, or database`);
+      }
       
       console.log(`📊 Using DATABASE_URL connection`);
       console.log(`   Host: ${config.host}:${config.port}`);
       console.log(`   Database: ${config.database}`);
       console.log(`   User: ${config.user}`);
     } catch (error) {
-      console.error('❌ Error parsing DATABASE_URL, falling back to discrete env vars:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error parsing DATABASE_URL:', errorMessage);
+      console.error('   Falling back to discrete env vars...');
       config = {
         host: process.env.AZURE_MYSQL_HOST || process.env.MYSQL_HOST || 'localhost',
         user: process.env.AZURE_MYSQL_USER || process.env.MYSQL_USER || '',
@@ -93,7 +111,12 @@ export function createDbConnection() {
       };
     }
   } else {
-    console.warn('⚠️  DATABASE_URL is not set or is a placeholder, using discrete env vars');
+    if (databaseUrl) {
+      console.warn('⚠️  DATABASE_URL appears to be a placeholder or invalid format');
+    } else {
+      console.warn('⚠️  DATABASE_URL is not set');
+    }
+    console.warn('   Using discrete env vars...');
     config = {
       host: process.env.AZURE_MYSQL_HOST || process.env.MYSQL_HOST || 'localhost',
       user: process.env.AZURE_MYSQL_USER || process.env.MYSQL_USER || '',
@@ -111,9 +134,14 @@ export function createDbConnection() {
     console.log(`   User: ${config.user}`);
   }
 
+  // Final validation
   if (!config.host || !config.user || !config.database) {
     console.error('❌ Missing required database configuration!');
-    console.error('   Please set DATABASE_URL or individual MySQL environment variables.');
+    console.error('   Required fields:');
+    if (!config.host) console.error('     - Host (set MYSQL_HOST or AZURE_MYSQL_HOST)');
+    if (!config.user) console.error('     - User (set MYSQL_USER or AZURE_MYSQL_USER)');
+    if (!config.database) console.error('     - Database (set MYSQL_DATABASE or AZURE_MYSQL_DATABASE)');
+    console.error('   Or set DATABASE_URL in format: mysql://user:password@host:port/database');
     throw new Error('Database configuration is missing. Please set DATABASE_URL or MySQL environment variables.');
   }
 
